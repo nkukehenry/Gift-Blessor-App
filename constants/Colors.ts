@@ -3,24 +3,78 @@
  * There are many other ways to style your app. For example, [Nativewind](https://www.nativewind.dev/), [Tamagui](https://tamagui.dev/), [unistyles](https://reactnativeunistyles.vercel.app), etc.
  */
 
-const tintColorLight = '#0a7ea4';
-const tintColorDark = '#fff';
+export const palette = {
+  primary: '#FF424D',
+  white: '#FFFFFF',
+  black: '#000000',
+  gray: {
+    100: '#F5F5F5',
+    200: '#EEEEEE',
+    300: '#E0E0E0',
+    400: '#BDBDBD',
+    500: '#9E9E9E',
+    600: '#757575',
+    700: '#616161',
+    800: '#424242',
+    900: '#212121',
+  },
+  red: {
+    100: '#FFEBEE',
+    500: '#F44336',
+    700: '#D32F2F',
+  },
+};
+
+export interface Theme {
+  primary: string;
+  background: {
+    primary: string;
+    secondary: string;
+  };
+  text: {
+    primary: string;
+    secondary: string;
+  };
+  border: {
+    light: string;
+    dark: string;
+  };
+  error: string;
+}
 
 export const Colors = {
   light: {
-    text: '#11181C',
-    background: '#fff',
-    tint: tintColorLight,
-    icon: '#687076',
-    tabIconDefault: '#687076',
-    tabIconSelected: tintColorLight,
-  },
+    primary: '#FF424D',
+    background: {
+      primary: '#FFFFFF',
+      secondary: '#F8F8F8',
+    },
+    text: {
+      primary: '#000000',
+      secondary: '#666666',
+    },
+    border: {
+      light: '#EEEEEE',
+      dark: '#DDDDDD',
+    },
+    error: '#FF424D',
+  } as Theme,
   dark: {
-    text: '#ECEDEE',
-    background: '#151718',
-    tint: tintColorDark,
-    icon: '#9BA1A6',
-    tabIconDefault: '#9BA1A6',
-    tabIconSelected: tintColorDark,
-  },
+    primary: '#FF424D',
+    background: {
+      primary: '#000000',
+      secondary: '#1A1A1A',
+    },
+    text: {
+      primary: '#FFFFFF',
+      secondary: '#999999',
+    },
+    border: {
+      light: '#333333',
+      dark: '#444444',
+    },
+    error: '#FF424D',
+  } as Theme,
 };
+
+export type Colors = typeof Colors

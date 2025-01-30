@@ -1,39 +1,55 @@
-import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
-import { useFonts } from 'expo-font';
 import { Stack } from 'expo-router';
-import * as SplashScreen from 'expo-splash-screen';
+import { useColorScheme } from 'react-native';
+import { Colors } from '../constants/Colors';
+import { AuthProvider } from '../contexts/AuthContext';
+import { GroupProvider } from '../contexts/GroupContext';
 import { StatusBar } from 'expo-status-bar';
-import { useEffect } from 'react';
-import 'react-native-reanimated';
 
-import { useColorScheme } from '@/hooks/useColorScheme';
-
-// Prevent the splash screen from auto-hiding before asset loading is complete.
-SplashScreen.preventAutoHideAsync();
-
-export default function RootLayout() {
+function RootLayoutNav() {
   const colorScheme = useColorScheme();
-  const [loaded] = useFonts({
-    SpaceMono: require('../assets/fonts/SpaceMono-Regular.ttf'),
-  });
-
-  useEffect(() => {
-    if (loaded) {
-      SplashScreen.hideAsync();
-    }
-  }, [loaded]);
-
-  if (!loaded) {
-    return null;
-  }
+  const theme = Colors[colorScheme ?? 'light'];
 
   return (
-    <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-      <Stack>
-        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-        <Stack.Screen name="+not-found" />
-      </Stack>
-      <StatusBar style="auto" />
-    </ThemeProvider>
+    <Stack
+      screenOptions={{
+        headerShown: false,
+        contentStyle: {
+          backgroundColor: theme.background.primary,
+        },
+        animation: 'slide_from_right',
+      }}
+    >
+      {/* Initial Route */}
+      <Stack.Screen name="index" options={{ headerShown: false }} />
+
+      {/* Auth Group */}
+      <Stack.Screen name="(auth)" options={{ headerShown: false }} />
+      
+      {/* Main Screens */}
+      <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+      <Stack.Screen name="(modals)/create-group" options={{ presentation: 'modal' }} />
+      <Stack.Screen name="(modals)/group/[id]" />
+      <Stack.Screen name="(modals)/group-settings/[id]" options={{ presentation: 'modal' }} />
+
+      {/* Profile Screens */}
+      <Stack.Screen name="(modals)/profile/[id]" />
+      <Stack.Screen name="(modals)/edit-profile" options={{ presentation: 'modal' }} />
+
+      {/* Wishlist Screens */}
+      <Stack.Screen name="(modals)/create-wishlist" options={{ presentation: 'modal' }} />
+      <Stack.Screen name="(modals)/wishlist/[id]" />
+      <Stack.Screen name="(modals)/wishlist/edit/[id]" options={{ presentation: 'modal' }} />
+    </Stack>
+  );
+}
+
+export default function RootLayout() {
+  return (
+    <AuthProvider>
+      <GroupProvider>
+        <RootLayoutNav />
+        <StatusBar style="dark" />
+      </GroupProvider>
+    </AuthProvider>
   );
 }
