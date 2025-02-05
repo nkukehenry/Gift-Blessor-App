@@ -40,6 +40,10 @@ export interface Theme {
     dark: string;
   };
   error: string;
+  gray: {
+    light: string;
+    dark: string;
+  };
 }
 
 export const Colors = {
@@ -58,6 +62,10 @@ export const Colors = {
       dark: '#DDDDDD',
     },
     error: '#FF424D',
+    gray: {
+      light: '#EEEEEE',
+      dark: '#DDDDDD',
+    },
   } as Theme,
   dark: {
     primary: '#FF424D',
@@ -74,6 +82,10 @@ export const Colors = {
       dark: '#444444',
     },
     error: '#FF424D',
+    gray: {
+      light: '#EEEEEE',
+      dark: '#DDDDDD',
+    },
   } as Theme,
 };
 

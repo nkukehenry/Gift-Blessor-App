@@ -1,205 +1,276 @@
-import React, { useState, useEffect, useRef } from "react"
+import React, { useState, useRef, useEffect } from 'react';
 import { 
   View, 
   Text, 
-  TextInput, 
   StyleSheet, 
-  TouchableOpacity,
-  Alert,
+  TextInput, 
+  TouchableOpacity, 
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
   Keyboard,
   TouchableWithoutFeedback,
-  useColorScheme,
-  Pressable
-} from "react-native"
-import { api } from "../services/api"
-import { Ionicons } from "@expo/vector-icons"
-import { Colors, palette } from "../constants/Colors"
-import { useRouter, useLocalSearchParams } from 'expo-router'
-
-const OTP_LENGTH = 4
+  ScrollView,
+  useColorScheme
+} from 'react-native';
+import { useLocalSearchParams, useRouter } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
+import { useAuth } from '../contexts/AuthContext';
+import { useModal } from '../contexts/ModalContext';
+import { Colors } from '../constants/Colors';
+import { authAPI } from '@/services/api';
 
 export default function OTPVerificationScreen() {
+  const colorScheme = useColorScheme();
+  const theme = Colors[colorScheme ?? 'light'];
+  const router = useRouter();
+  const { verifyOTP, otpLoading } = useAuth();
+  const { showModal } = useModal();
   const params = useLocalSearchParams();
-  const { phoneNumber, firstName, lastName } = params;
-  const colorScheme = useColorScheme()
-  const theme = Colors[colorScheme ?? 'light']
-  const router = useRouter()
-  
-  const [otp, setOtp] = useState("")
-  const [isLoading, setIsLoading] = useState(false)
-  const [timeLeft, setTimeLeft] = useState(30)
-  const inputRef = useRef<TextInput>(null)
+
+  const [otp, setOtp] = useState(['', '', '', '']);
+  const inputRefs = useRef<Array<TextInput | null>>([]);
+  const [timer, setTimer] = useState(30);
+  const [canResend, setCanResend] = useState(false);
 
   useEffect(() => {
-    if (timeLeft === 0) return
-    const timer = setInterval(() => {
-      setTimeLeft(prev => prev - 1)
-    }, 1000)
-    return () => clearInterval(timer)
-  }, [timeLeft])
-
-  const handleResendOTP = async () => {
-    if (timeLeft > 0) return
-    setIsLoading(true)
-    try {
-      const response = await api.sendOTP(phoneNumber as string)
-      if (response.success) {
-        setTimeLeft(30)
-        Alert.alert("Success", "Verification code sent successfully")
-      } else {
-        Alert.alert("Error", response.message || "Failed to send verification code")
-      }
-    } catch (error) {
-      Alert.alert(
-        "Error",
-        error instanceof Error ? error.message : "Failed to send verification code. Please try again."
-      )
-    } finally {
-      setIsLoading(false)
+    if (timer === 0) {
+      setCanResend(true);
+    } else {
+      const timerId = setTimeout(() => {
+        setTimer(prevTimer => prevTimer - 1);
+      }, 1000);
+      return () => clearTimeout(timerId);
     }
-  }
+  }, [timer]);
 
-  const handleVerifyOTP = async () => {
-    if (!otp || otp.length !== OTP_LENGTH) {
-      Alert.alert("Error", "Please enter a valid 4-digit code")
-      return
+  // Focus first input on mount
+  useEffect(() => {
+    inputRefs.current[0]?.focus();
+  }, []);
+
+  const handleOtpChange = (index: number, value: string) => {
+    const newOtp = [...otp];
+    newOtp[index] = value;
+    setOtp(newOtp);
+
+    // Auto focus next input
+    if (value && index < 3) {
+      inputRefs.current[index + 1]?.focus();
     }
+  };
 
-    setIsLoading(true)
-    try {
-      const response = await api.verifyOTP(phoneNumber as string, otp)
-      if (response.success) {
-        if (firstName && lastName) {
-          // This is a signup flow
-          await api.createUser({
-            phoneNumber: phoneNumber as string,
-            firstName: firstName as string,
-            lastName: lastName as string,
-          })
+  const handleBackspace = (index: number) => {
+    if (!otp[index] && index > 0) {
+      // If current input is empty and backspace is pressed, focus previous input
+      const newOtp = [...otp];
+      newOtp[index - 1] = '';
+      setOtp(newOtp);
+      inputRefs.current[index - 1]?.focus();
+    } else {
+      // Clear current input
+      const newOtp = [...otp];
+      newOtp[index] = '';
+      setOtp(newOtp);
+    }
+  };
+
+  const handleVerify = async () => {
+    const otpString = otp.join('');
+    if (otpString.length !== 4) {
+      showModal({
+        title: "Validation Error",
+        message: "Please enter the complete verification code",
+        type: "error",
+        primaryButton: {
+          text: "OK",
+          onPress: () => {}
         }
-        // Navigate to tabs after successful verification
-        router.replace("/(tabs)")
-      } else {
-        Alert.alert("Error", response.message || "Invalid verification code")
-      }
-    } catch (error) {
-      Alert.alert(
-        "Error",
-        error instanceof Error ? error.message : "Failed to verify code. Please try again."
-      )
-    } finally {
-      setIsLoading(false)
+      });
+      return;
     }
-  }
 
-  const handleOTPChange = (text: string) => {
-    // Only allow numbers and limit to OTP_LENGTH digits
-    const cleaned = text.replace(/[^0-9]/g, '').slice(0, OTP_LENGTH)
-    setOtp(cleaned)
-  }
+    try {
+      const response = await verifyOTP({
+        phoneNumber: params.phoneNumber as string,
+        otp: otpString
+      });
 
-  const handlePressOTPBox = () => {
-    inputRef.current?.focus()
-  }
+      if (response.success) {
+        authAPI.setToken(response.data.token);
+        router.replace('/(tabs)');
+      } else {
+        showModal({
+          title: "Verification Failed",
+          message: response.message || "Invalid verification code",
+          type: "error",
+          primaryButton: {
+            text: "OK",
+            onPress: () => {}
+          }
+        });
+      }
+    } catch (error: any) {
+      showModal({
+        title: "Verification Error",
+        message: error.message || "Failed to verify code",
+        type: "error",
+        primaryButton: {
+          text: "OK",
+          onPress: () => {}
+        }
+      });
+    }
+  };
+
+  const handleResend = async () => {
+    if (!canResend) return;
+
+    try {
+      const response = await authAPI.resendOTP(params.phoneNumber as string);
+      if (response.success) {
+        setTimer(30);
+        setCanResend(false);
+        showModal({
+          title: "Success",
+          message: "Verification code sent successfully",
+          type: "success",
+          primaryButton: {
+            text: "OK",
+            onPress: () => {}
+          }
+        });
+      } else {
+        showModal({
+          title: "Failed to Resend",
+          message: response.message || "Failed to send verification code",
+          type: "error",
+          primaryButton: {
+            text: "OK",
+            onPress: () => {}
+          }
+        });
+      }
+    } catch (error: any) {
+      const errorMessage = error.response?.data?.message || 
+                          error.message || 
+                          "Failed to send verification code. Please try again.";
+      
+      showModal({
+        title: "Failed to Resend",
+        message: errorMessage,
+        type: "error",
+        primaryButton: {
+          text: "OK",
+          onPress: () => {}
+        }
+      });
+    }
+  };
 
   return (
     <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
       <KeyboardAvoidingView 
-        style={[styles.container, { backgroundColor: theme.background.primary }]}
+        style={[styles.container, { backgroundColor: theme.background }]}
         behavior={Platform.OS === "ios" ? "padding" : undefined}
       >
-        <View style={styles.content}>
-          <TouchableOpacity 
-            style={styles.backButton}
-            onPress={() => router.back()}
-          >
-            <Ionicons name="arrow-back" size={24} color={theme.text.primary} />
-          </TouchableOpacity>
+        <ScrollView 
+          contentContainerStyle={styles.scrollContent}
+          keyboardShouldPersistTaps="handled"
+        >
+          <View style={styles.content}>
+            <TouchableOpacity 
+              style={styles.backButton}
+              onPress={() => router.back()}
+            >
+              <Ionicons name="arrow-back" size={24} color={theme.text} />
+            </TouchableOpacity>
 
-          <View style={styles.header}>
-            <Text style={[styles.title, { color: theme.primary }]}>Enter</Text>
-            <Text style={[styles.subtitle, { color: theme.text.primary }]}>verification code</Text>
-            <Text style={[styles.description, { color: theme.text.secondary }]}>
-              We've sent a 4-digit code to your phone number
-            </Text>
-          </View>
+            <View style={styles.header}>
+              <Text style={[styles.welcomeText, { color: theme.primary }]}>Verify</Text>
+              <Text style={[styles.accountText, { color: theme.text.primary }]}>Login Session!</Text>
+              <Text style={[styles.subtitle, { color: theme.text.gray }]}>
+                Enter the 4-digit code sent to {params.phoneNumber}
+              </Text>
+            </View>
 
-          <View style={styles.form}>
+
             <View style={styles.otpContainer}>
-              <TextInput
-                ref={inputRef}
-                value={otp}
-                onChangeText={handleOTPChange}
-                keyboardType="numeric"
-                maxLength={OTP_LENGTH}
-                style={styles.hiddenInput}
-                autoFocus
-              />
-              {Array(OTP_LENGTH).fill(0).map((_, index) => (
-                <Pressable 
+              {otp.map((digit, index) => (
+                <TextInput
                   key={index}
-                  onPress={handlePressOTPBox}
+                  ref={(ref) => inputRefs.current[index] = ref}
                   style={[
-                    styles.otpBox,
-                    { 
-                      borderColor: theme.border.light,
-                      backgroundColor: theme.background.primary,
-                    },
-                    otp.length === index && { borderColor: theme.primary },
+                    styles.otpInput,
+                    { borderWidth: 1,
+                      borderColor: theme.gray.dark,
+                      color: theme.text.primary,
+                      backgroundColor: theme.gray.dark
+                    }
+
                   ]}
-                >
-                  <Text style={[styles.otpText, { color: theme.text.primary }]}>
-                    {otp[index] || ''}
-                  </Text>
-                </Pressable>
+                  value={digit}
+                  onChangeText={(value) => handleOtpChange(index, value)}
+                  keyboardType="number-pad"
+                  maxLength={1}
+
+
+                  onKeyPress={({ nativeEvent }) => {
+                    if (nativeEvent.key === 'Backspace') {
+                      handleBackspace(index);
+                    }
+                  }}
+                />
               ))}
             </View>
 
-            <TouchableOpacity
+            <TouchableOpacity 
               style={[
-                styles.button, 
+                styles.button,
                 { backgroundColor: theme.primary },
-                isLoading && [styles.buttonDisabled, { opacity: 0.7 }]
+                otpLoading && styles.buttonDisabled
               ]}
-              onPress={handleVerifyOTP}
-              disabled={isLoading || otp.length !== OTP_LENGTH}
+              onPress={handleVerify}
+              disabled={otpLoading || otp.some(digit => !digit)}
             >
-              {isLoading ? (
-                <ActivityIndicator color={palette.white} />
+              {otpLoading ? (
+                <ActivityIndicator color={theme.primary} />
               ) : (
-                <Text style={[styles.buttonText, { color: palette.white }]}>Verify</Text>
+                <Text style={[styles.buttonText, { color: theme.background.primary }]}>
+                  Verify
+                </Text>
               )}
             </TouchableOpacity>
 
-            <TouchableOpacity
-              style={[
-                styles.resendButton,
-                timeLeft > 0 && { opacity: 0.5 }
-              ]}
-              onPress={handleResendOTP}
-              disabled={timeLeft > 0 || isLoading}
-            >
-              <Text style={[styles.resendText, { color: theme.text.secondary }]}>
-                {timeLeft > 0 ? (
-                  `Resend code in ${timeLeft}s`
-                ) : (
-                  'Resend code'
-                )}
+            <View style={styles.footer}>
+              <Text style={[styles.footerText, { color: theme.textSecondary }]}>
+                Didn't receive code?{' '}
               </Text>
-            </TouchableOpacity>
+              {canResend ? (
+                <TouchableOpacity onPress={handleResend}>
+                  <Text style={[styles.footerLink, { color: theme.tint }]}>
+                    Resend
+                  </Text>
+                </TouchableOpacity>
+              ) : (
+                <Text style={[styles.timerText, { color: theme.textSecondary }]}>
+                  {timer}s
+                </Text>
+              )}
+            </View>
           </View>
-        </View>
+        </ScrollView>
       </KeyboardAvoidingView>
     </TouchableWithoutFeedback>
-  )
+  );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+  },
+  scrollContent: {
+    flexGrow: 1,
   },
   content: {
     flex: 1,
@@ -215,64 +286,65 @@ const styles = StyleSheet.create({
   header: {
     marginBottom: 48,
   },
-  title: {
+  welcomeText: {
     fontSize: 48,
     fontWeight: "bold",
     marginBottom: -10,
   },
-  subtitle: {
+  accountText: {
     fontSize: 48,
     fontWeight: "bold",
     marginBottom: 16,
   },
-  description: {
+  subtitle: {
     fontSize: 16,
     lineHeight: 24,
   },
-  form: {
-    width: "100%",
-  },
   otpContainer: {
-    flexDirection: "row",
-    justifyContent: "space-between",
+    flexDirection: 'row',
+    justifyContent: 'space-between',
     marginBottom: 32,
+    paddingHorizontal: 20,
   },
-  hiddenInput: {
-    position: "absolute",
-    opacity: 0,
-  },
-  otpBox: {
-    width: 70,
-    height: 70,
+  otpInput: {
+    width: 60,
+    height: 60,
+    borderWidth: 1,
     borderRadius: 12,
-    borderWidth: 2,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  otpText: {
+    textAlign: 'center',
     fontSize: 24,
-    fontWeight: "bold",
+    fontWeight: '500',
   },
   button: {
-    borderRadius: 30,
-    height: 56,
-    justifyContent: "center",
-    alignItems: "center",
-    marginTop: 24,
+    width: '100%',
+    height: 50,
+    borderRadius: 25,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 20,
   },
   buttonDisabled: {
     opacity: 0.7,
   },
+
   buttonText: {
     fontSize: 16,
-    fontWeight: "600",
+    fontWeight: 'bold',
   },
-  resendButton: {
-    marginTop: 24,
-    alignItems: "center",
+  footer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  resendText: {
+  footerText: {
     fontSize: 14,
   },
-})
-
+  footerLink: {
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  timerText: {
+    fontSize: 14,
+    fontWeight: '500',
+  },
+});

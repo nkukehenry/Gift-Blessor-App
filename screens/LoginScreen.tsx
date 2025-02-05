@@ -13,13 +13,15 @@ import {
   TouchableWithoutFeedback,
   useColorScheme
 } from "react-native"
-import { api } from "../services/api"
 import { NativeStackScreenProps } from "@react-navigation/native-stack"
 import { RootStackParamList } from "../navigation/types"
 import { Ionicons } from "@expo/vector-icons"
 import { Colors, palette } from "../constants/Colors"
 import { useRouter } from 'expo-router'
 import { decryptAes, encryptAes, hash512 } from '../services/cryptojs-custom/crypto-util';
+import { useAuth } from '../contexts/AuthContext'
+import { useModal } from '../contexts/ModalContext'
+import { CountryPicker } from "react-native-country-codes-picker";
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Login'>
 
@@ -27,6 +29,8 @@ export default function LoginScreen({ navigation }: Props) {
   const colorScheme = useColorScheme()
   const theme = Colors[colorScheme ?? 'light']
   const router = useRouter()
+  const { login, loginLoading } = useAuth()
+  const { showModal } = useModal()
 
   useEffect(()=>{
 
@@ -40,61 +44,66 @@ export default function LoginScreen({ navigation }: Props) {
    },[])
   
   const [phoneNumber, setPhoneNumber] = useState("")
-  const [isLoading, setIsLoading] = useState(false)
+  const [countryCode, setCountryCode] = useState('+254')
+  const [show, setShow] = useState(false)
 
-  const validatePhoneNumber = () => {
-    const cleaned = phoneNumber.replace(/\D/g, '')
-    if (!cleaned) {
-      Alert.alert("Error", "Please enter your phone number")
-      return false
+  const handleLogin = async () => {
+    // Basic validation
+    if (!phoneNumber || phoneNumber.length < 9) {
+      showModal({
+        title: "Validation Error",
+        message: "Please enter a valid phone number",
+        type: "error",
+        primaryButton: {
+          text: "OK",
+          onPress: () => {}
+        }
+      });
+      return;
     }
-    if (cleaned.length < 10) {
-      Alert.alert("Error", "Please enter a valid phone number")
-      return false
-    }
-    return true
-  }
 
-  const formatPhoneNumber = (text: string) => {
-    const cleaned = text.replace(/\D/g, '')
-    let formatted = cleaned
-    if (cleaned.length >= 6) {
-      formatted = `${cleaned.slice(0, 3)}-${cleaned.slice(3, 6)}-${cleaned.slice(6)}`
-    } else if (cleaned.length >= 3) {
-      formatted = `${cleaned.slice(0, 3)}-${cleaned.slice(3)}`
-    }
-    return formatted
-  }
-
-  const handlePhoneNumberChange = (text: string) => {
-    const formatted = formatPhoneNumber(text)
-    setPhoneNumber(formatted)
-  }
-
-  const handleSendOTP = async () => {
-    if (!validatePhoneNumber()) return
-
-    setIsLoading(true)
     try {
-      const cleanedNumber = phoneNumber.replace(/\D/g, '')
-      const response = await api.sendOTP(cleanedNumber)
+      // Format phone number: remove leading zeros and add country code
+      const cleanNumber = phoneNumber.replace(/^0+/, '');
+      const formattedPhone = `${countryCode}${cleanNumber}`;
+      console.log('Attempting login with:', formattedPhone);
+
+      const response = await login(formattedPhone);
+      console.log('Login response:', response);
+
       if (response.success) {
         router.push({
-          pathname: "/(auth)/otp-verification",
-          params: { phoneNumber: cleanedNumber }
-        })
+          pathname: '/otp-verification',
+          params: { phoneNumber: formattedPhone }
+        });
       } else {
-        Alert.alert("Error", response.message || "Failed to send verification code")
+        showModal({
+          title: "Login Failed",
+          message: response.message || "Failed to send verification code",
+          type: "error",
+          primaryButton: {
+            text: "OK",
+            onPress: () => {}
+          }
+        });
       }
-    } catch (error) {
-      Alert.alert(
-        "Error",
-        error instanceof Error ? error.message : "Failed to send verification code. Please try again."
-      )
-    } finally {
-      setIsLoading(false)
+    } catch (error: any) {
+      console.error('Login error:', error);
+      const errorMessage = error.response?.data?.message || 
+                          error.message || 
+                          "Failed to send verification code. Please try again.";
+      
+      showModal({
+        title: "Login Failed",
+        message: errorMessage,
+        type: "error",
+        primaryButton: {
+          text: "OK",
+          onPress: () => {}
+        }
+      });
     }
-  }
+  };
 
   const handleSignup = () => {
     router.push("/(auth)/signup")
@@ -120,38 +129,60 @@ export default function LoginScreen({ navigation }: Props) {
               backgroundColor: theme.background.primary,
               borderColor: theme.border.light 
             }]}>
-              <Ionicons name="call-outline" size={20} color={theme.text.secondary} style={styles.inputIcon} />
+              <TouchableOpacity
+                style={styles.countryCode}
+                onPress={() => setShow(true)}
+              >
+                <Text style={styles.countryCodeText}>{countryCode}</Text>
+              </TouchableOpacity>
               <TextInput
                 style={[styles.input, { color: theme.text.primary }]}
-                placeholder="Phone Number"
+                placeholder="7XXXXXXXX"
                 value={phoneNumber}
-                onChangeText={handlePhoneNumberChange}
+                onChangeText={setPhoneNumber}
                 keyboardType="phone-pad"
-                maxLength={12}
-                editable={!isLoading}
+                maxLength={9}
+                editable={!loginLoading}
                 autoFocus
                 placeholderTextColor={theme.text.secondary}
               />
-              {phoneNumber.length > 0 && (
-                <TouchableOpacity 
-                  style={styles.clearButton}
-                  onPress={() => setPhoneNumber("")}
-                >
-                  <Ionicons name="close-circle" size={20} color={theme.text.secondary} />
-                </TouchableOpacity>
-              )}
             </View>
+
+            <CountryPicker
+              show={show}
+              pickerButtonOnPress={(item) => {
+                setCountryCode(item.dial_code);
+                setShow(false);
+              }}
+              onBackdropPress={() => setShow(false)}
+              style={{
+                modal: {
+                  height: 500,
+                },
+                countryButtonStyles: {
+                  height: 50,
+                },
+                searchMessageText: {
+                  color: '#000'
+                },
+                countryMessageText: {
+                  color: '#000'
+                },
+              }}
+              searchPlaceholder="Search country"
+              lang="en"
+            />
 
             <TouchableOpacity
               style={[
                 styles.button, 
                 { backgroundColor: theme.primary },
-                isLoading && [styles.buttonDisabled, { opacity: 0.7 }]
+                loginLoading && [styles.buttonDisabled, { opacity: 0.7 }]
               ]}
-              onPress={handleSendOTP}
-              disabled={isLoading}
+              onPress={handleLogin}
+              disabled={loginLoading}
             >
-              {isLoading ? (
+              {loginLoading ? (
                 <ActivityIndicator color={palette.white} />
               ) : (
                 <Text style={[styles.buttonText, { color: palette.white }]}>Continue</Text>
@@ -161,7 +192,7 @@ export default function LoginScreen({ navigation }: Props) {
             <TouchableOpacity
               style={styles.signupLink}
               onPress={handleSignup}
-              disabled={isLoading}
+              disabled={loginLoading}
             >
               <Text style={[styles.signupText, { color: theme.text.secondary }]}>
                 Don't have an account? <Text style={[styles.signupTextBold, { color: theme.primary }]}>Join Now</Text>
@@ -213,15 +244,21 @@ const styles = StyleSheet.create({
     height: 56,
     borderWidth: 1,
   },
-  inputIcon: {
-    marginRight: 12,
+  countryCode: {
+    height: 50,
+    paddingHorizontal: 15,
+    borderRadius: 8,
+    marginRight: 0,
+    justifyContent: 'center',
+    paddingLeft: 2,
+  },
+  countryCodeText: {
+    fontSize: 16,
+    color: '#000',
   },
   input: {
     flex: 1,
     fontSize: 16,
-  },
-  clearButton: {
-    padding: 4,
   },
   button: {
     borderRadius: 30,
